@@ -1,0 +1,44 @@
+export class ProjectRepository {
+    db;
+    constructor(db) {
+        this.db = db;
+    }
+    async findAll() {
+        const { rows } = await this.db.query(`SELECT
+         p.id,
+         p.name,
+         fr.version  AS "latestVersion",
+         fr.status,
+         ${this.db.boolExpr('fr.run_id IS NOT NULL')} AS "hasFeasibility",
+         COALESCE(fr.updated_at, p.created_at) AS "updatedAt"
+       FROM projects p
+       LEFT JOIN (
+         SELECT id AS run_id, project_id, version, status, updated_at,
+           ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY COALESCE(version, 0) DESC, updated_at DESC) AS rn
+         FROM feasibility_runs
+       ) fr ON fr.project_id = p.id AND fr.rn = 1
+       ORDER BY COALESCE(fr.updated_at, p.created_at) DESC`);
+        return rows;
+    }
+    async findById(id) {
+        const { rows } = await this.db.query(`SELECT id, name, created_at AS "createdAt"
+       FROM projects
+       WHERE id = ${this.db.placeholder(1)}`, [id]);
+        return rows[0] ?? null;
+    }
+    async findByName(name) {
+        const { rows } = await this.db.query(`SELECT id, name, created_at AS "createdAt"
+       FROM projects
+       WHERE name = ${this.db.placeholder(1)}`, [name]);
+        return rows[0] ?? null;
+    }
+    async create(name) {
+        const result = await this.db.insertReturning("projects", ["name"], [name], 'id, name, created_at AS "createdAt"');
+        return result.rows[0];
+    }
+    async delete(id) {
+        const { rowCount } = await this.db.query(`DELETE FROM projects WHERE id = ${this.db.placeholder(1)}`, [id]);
+        return rowCount > 0;
+    }
+}
+//# sourceMappingURL=project.repository.js.map
